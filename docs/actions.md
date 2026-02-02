@@ -2,14 +2,15 @@
 
 ## Запуск
 
-При локальном запуске перейти в папку keycloack/bin и запустить ./kc.sh start-dev.
+При локальном запуске перейти в папку keycloack/bin и запустить ./kc.sh
+start-dev.
 Keycloack запустится на порту 8080.
 
-
+## SERVER
 
 ## Создать realm:
 
--> Manage realms 
+-> Manage realms
 --> create realm
 
 ## Создание пользователя:
@@ -25,7 +26,6 @@ Keycloack запустится на порту 8080.
 
 ```
 
-
 ## Создание клиента:
 
 ```text
@@ -36,8 +36,6 @@ Keycloack запустится на порту 8080.
 --> Credentials: Client  Secret - скопировать
 
 ```
-
-
 
 # Настройка приложения:
 
@@ -59,8 +57,6 @@ Keycloack запустится на порту 8080.
 </dependency>
 ```
 
-
-
 ## Аутентификация пользователя:
 
 HTTP request:
@@ -75,19 +71,19 @@ client_id=springsecurity&client_secret=Bmuu0eVpFB0YhBQ5k5WASrF3qYxyBYdS&username
 ## Добавить бин
 
 ```java
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.oauth2ResourceServer(
-                oauth2 ->
-                        oauth2.jwt(Customizer.withDefaults()));
-        http.oauth2Login(Customizer.withDefaults());
 
-        return http
-                .authorizeHttpRequests(c -> c.requestMatchers("/error").permitAll()
-                        .requestMatchers("/manager.html").hasRole("MANAGER")
-                        .anyRequest().authenticated())
-                .build();
-    }
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    http.oauth2ResourceServer(
+            oauth2 ->
+                    oauth2.jwt(Customizer.withDefaults()));
+
+    return http
+            .authorizeHttpRequests(c -> c.requestMatchers("/error").permitAll()
+                    .requestMatchers("/manager.html").hasRole("MANAGER")
+                    .anyRequest().authenticated())
+            .build();
+}
 ```
 
 ## Получаем токен:
@@ -131,28 +127,28 @@ Authorization: Bearer eyJhb...
 Далее создаем бин, он из JWT получает роль, созданную нами ранее(MANAGER),
 с которой можно получить доступ к странице(manager.html)
 
-
 ```java
-    @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
-        var converter = new JwtAuthenticationConverter();
-        var jwtGrantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        converter.setPrincipalClaimName("preferred_username");
-        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-            var authorities = jwtGrantedAuthoritiesConverter.convert(jwt);
-//            var roles = jwt.getClaimAsStringList("spring_sec_roles");
-            var roles = (List<String>)jwt.getClaimAsMap("realm_access").get("roles");
-            
-            return Stream.concat(authorities.stream(),
-                            roles.stream()
-                                    .filter(role -> role.startsWith("ROLE_"))
-                                    .map(SimpleGrantedAuthority::new)
-                                    .map(GrantedAuthority.class::cast))
-                    .toList();
-        });
 
-        return converter;
-    }
+@Bean
+public JwtAuthenticationConverter jwtAuthenticationConverter() {
+    var converter = new JwtAuthenticationConverter();
+    var jwtGrantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
+    converter.setPrincipalClaimName("preferred_username");
+    converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+        var authorities = jwtGrantedAuthoritiesConverter.convert(jwt);
+//            var roles = jwt.getClaimAsStringList("spring_sec_roles");
+        var roles = (List<String>) jwt.getClaimAsMap("realm_access").get("roles");
+
+        return Stream.concat(authorities.stream(),
+                        roles.stream()
+                                .filter(role -> role.startsWith("ROLE_"))
+                                .map(SimpleGrantedAuthority::new)
+                                .map(GrantedAuthority.class::cast))
+                .toList();
+    });
+
+    return converter;
+}
 ```
 
 Еще вытаскивать роли можно маппером из Keycloack.
@@ -171,23 +167,111 @@ User realm role:
 Теперь:
 
 ```java
-    @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
-        var converter = new JwtAuthenticationConverter();
-        var jwtGrantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        converter.setPrincipalClaimName("preferred_username");
-        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-            var authorities = jwtGrantedAuthoritiesConverter.convert(jwt);
-            var roles = jwt.getClaimAsStringList("spring_sec_roles");
 
-            return Stream.concat(authorities.stream(),
+@Bean
+public JwtAuthenticationConverter jwtAuthenticationConverter() {
+    var converter = new JwtAuthenticationConverter();
+    var jwtGrantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
+    converter.setPrincipalClaimName("preferred_username");
+    converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+        var authorities = jwtGrantedAuthoritiesConverter.convert(jwt);
+        var roles = jwt.getClaimAsStringList("spring_sec_roles");
+
+        return Stream.concat(authorities.stream(),
+                        roles.stream()
+                                .filter(role -> role.startsWith("ROLE_"))
+                                .map(SimpleGrantedAuthority::new)
+                                .map(GrantedAuthority.class::cast))
+                .toList();
+    });
+
+    return converter;
+}
+```
+
+---
+
+# CLIENT
+
+```xml
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-oauth2-client</artifactId>
+</dependency>
+```
+
+В application.yml добавляем "client":
+
+```yaml
+       spring:
+       security:
+         oauth2:
+           resourceserver:
+             jwt:
+               issuer-uri: http://localhost:8080/realms/eselpo
+           client:
+             provider:
+               keycloak:
+                 issuer-uri: http://localhost:8080/realms/eselpo
+                 user-name-attribute: preferred_username
+             registration:
+               keycloak:
+                 client-id: springsecurity
+                 client-secret: Bmuu0eVpFB0YhBQ5k5WASrF3qYxyBYds
+                 scope: openid
+```
+
+Далее корректируем securityFilterChain:
+
+```java
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http.oauth2ResourceServer(
+                oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+     //-> Добавили эту строку:
+        http.oauth2Login(Customizer.withDefaults());
+
+        return http
+                .authorizeHttpRequests(c -> c.requestMatchers("/error").permitAll()
+                        .requestMatchers("/manager.html").hasRole("MANAGER")
+                        .anyRequest().authenticated())
+                .build();
+    }
+```
+
+Далее открываем http://localhost:8081/authenticated.html
+
+Попадаем на страницу аутенитификации Keycloak
+
+Вводим: j.deniels , password.
+
+Но для страницы manager.html не хватает прав. 
+
+### Добавляем права
+
+```java
+  // OidcUserRequest - способ получения информации и пользователе
+    // OidcUser - информация, которая была возвращена от OIDC - провайдера
+    @Bean
+    public OAuth2UserService<OidcUserRequest, OidcUser> oAuth2UserService() {
+        var oidcUserService = new OidcUserService();
+        return userRequest -> {
+            var oidcUser = oidcUserService.loadUser(userRequest);
+            var roles = oidcUser.getClaimAsStringList("spring_sec_roles");
+            var authorities = Stream.concat(oidcUser.getAuthorities().stream(),
                             roles.stream()
                                     .filter(role -> role.startsWith("ROLE_"))
                                     .map(SimpleGrantedAuthority::new)
                                     .map(GrantedAuthority.class::cast))
                     .toList();
-        });
 
-        return converter;
+            return new DefaultOidcUser(authorities, oidcUser.getIdToken(), oidcUser.getUserInfo());
+        };
     }
 ```
+
+Заходим на страницу http://localhost:8081/manager.html с ролью MANAGER
+
+
